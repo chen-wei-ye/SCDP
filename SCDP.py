@@ -11,7 +11,7 @@ from load import load_data
 sigma_ = 1  # 高斯核函数宽度
 epsilon_ = 5  # 差分隐私隐私预算
 add_dp = 0  # 是否添加差分隐私
-choice = 4
+choice = 1
 
 
 # 计算高斯核函数的相似性矩阵
