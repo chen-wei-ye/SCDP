@@ -1,3 +1,5 @@
+from typing import Dict, Any
+
 import numpy as np
 import pandas as pd
 import os
@@ -10,32 +12,63 @@ from load import load_data
 # 参数设置
 epsilon_ = 5  # 差分隐私隐私预算
 add_dp = 0  # 是否添加差分隐私
-choice = 3
+data_choice = 4  # 数据集选择
+choice_sigma = 1  # 选择sigma计算方式
 
 
 # 计算最佳sigma参数矩阵
-def adaptive_sigma(dist_matrix):
+def adaptive_sigma(dist_matrix, choice):
+    n = dist_matrix.shape[0]
+    sigma_matrix = np.zeros((n, n))
+    if choice == 1:
+        sigma_matrix = compute_adaptive_sigma(dist_matrix)
+    elif choice == 2:
+        sigma_matrix = compute_knn_sigma(dist_matrix)
+    return sigma_matrix
+
+
+# 计算自适应sigma矩阵的函数
+def compute_adaptive_sigma(dist_matrix):
     n = dist_matrix.shape[0]
     sigma_matrix = np.zeros((n, n))
     index_order = np.zeros((n, n))
     for i in range(n):
         sorted_indices = np.argsort(dist_matrix[i, :])
         # 构建一个字典，键为排序后的索引，值为原始索引位置
-        index_mapping = {sorted_indices[i]: i for i in range(len(sorted_indices))}
+        index_mapping: Dict[Any, int] = {sorted_indices[i]: i for i in range(len(sorted_indices))}
         # 使用字典将排序后的索引映射回原始索引位置
         original_positions = [index_mapping[j] for j in range(len(sorted_indices))]
         index_order[i] = original_positions
         m = np.mean(dist_matrix[i, :])
-        k = int(n * 0.25)        # k为最近邻个数
-        distances = dist_matrix[i, :]        # 取出第i行的距离
-        knn_distances = np.sort(distances)[:k]        # 排序并选取前k个最近邻距离
+        for j in range(n):
+            if (index_order[i][j] + index_order[j][i]) != 0:
+                sigma_matrix[i, j] = m / ((index_order[i][j] + index_order[j][i]) / 2)  # 计算自适应sigma矩阵
+            else:  # 处理分母为零的情况，赋予一个特定的值，采用均值
+                sigma_matrix[i, j] = m
+    return sigma_matrix
+
+
+# 计算最近邻sigma矩阵的函数
+def compute_knn_sigma(dist_matrix):
+    """
+        计算最近邻sigma矩阵的函数
+
+        Args:
+        dist_matrix: 距离矩阵
+
+        Returns:
+        sigma_matrix: 最近邻sigma矩阵
+    """
+    n = dist_matrix.shape[0]
+    sigma_matrix = np.zeros((n, n))
+    for i in range(n):
+        m = np.mean(dist_matrix[i, :])
+        k = int(n * 0.25)  # k为最近邻个数
+        distances = dist_matrix[i, :]  # 取出第i行的距离
+        knn_distances = np.sort(distances)[:k]  # 排序并选取前k个最近邻距离
         sigma_i = np.mean(knn_distances)
         for j in range(n):
             sigma_matrix[i, j] = sigma_i * 0.5 + m * 0.5
-            # if (index_order[i][j] + index_order[j][i]) != 0:
-            #     sigma_matrix[i, j] = m / ((index_order[i][j] + index_order[j][i]) / 2)  # 计算自适应sigma矩阵
-            # else:      # 处理分母为零的情况，赋予一个特定的值，采用均值
-            #     sigma_matrix[i, j] = m
     return sigma_matrix
 
 
@@ -63,7 +96,7 @@ def add_laplace_noise(similarity_matrix, epsilon, sensitivity=1.0):
 # 谱聚类算法
 def spectral_clustering_with_dp(x, n_clusters, epsilon):
     pairwise_dist = pairwise_distances(x)
-    sigma_matrix = adaptive_sigma(pairwise_dist)
+    sigma_matrix = adaptive_sigma(pairwise_dist, choice_sigma)
     similarity_matrix = compute_similarity_matrix(x, sigma_matrix)
     if add_dp == 1:
         similarity_matrix = add_laplace_noise(similarity_matrix, epsilon)
@@ -107,7 +140,7 @@ def visualize_clustering(x, labels):
 
 # 主函数
 def main():
-    x, y, data_name, k = load_data(choice)
+    x, y, data_name, k = load_data(data_choice)
     labels = spectral_clustering_with_dp(x, n_clusters=k, epsilon=epsilon_)
     evaluate_clustering(x, labels, 'spectral_clustering.csv', y, data_name)
     visualize_clustering(x, labels)
